@@ -481,3 +481,453 @@ document.addEventListener('DOMContentLoaded', () => {
   initArc();
   loadServices();
 });
+
+// ══════════════════════════════════════════════
+// FIREWALL MODULE
+// ══════════════════════════════════════════════
+
+let fwState = { enabled: false, rules: [] };
+let fwEditingId = null;
+
+// ── Toast ──────────────────────────────────────
+function fwToast(msg, type = 'success') {
+  let t = document.getElementById('fw-toast-el');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'fw-toast-el';
+    t.className = 'fw-toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.className = `fw-toast ${type}`;
+  // Force reflow
+  void t.offsetWidth;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Cargar y renderizar estado ─────────────────
+async function loadFirewall() {
+  try {
+    const res = await fetch('/api/firewall');
+    fwState = await res.json();
+    renderFirewallUI();
+  } catch(e) {
+    console.error('Error cargando firewall:', e);
+  }
+}
+
+function renderFirewallUI() {
+  const enabled = fwState.enabled;
+
+  // Badge
+  const badge = document.getElementById('fw-status-badge');
+  if (badge) {
+    badge.textContent = enabled ? 'activo' : 'desactivado';
+    badge.classList.toggle('active', enabled);
+  }
+
+  // Toggle button
+  const btn = document.getElementById('fw-toggle-btn');
+  const lbl = document.getElementById('fw-toggle-label');
+  if (btn) {
+    btn.classList.toggle('active', enabled);
+    if (lbl) lbl.textContent = enabled ? 'desactivar firewall' : 'activar firewall';
+  }
+
+  // Status bar
+  const bar = document.getElementById('fw-status-bar');
+  const dot = document.getElementById('fw-dot');
+  const statusTxt = document.getElementById('fw-status-text');
+  const rulesCount = document.getElementById('fw-rules-count');
+
+  if (bar) bar.classList.toggle('active', enabled);
+  if (dot) dot.classList.toggle('active', enabled);
+
+  const activeRules = (fwState.rules || []).filter(r => r.active).length;
+  const totalRules = (fwState.rules || []).length;
+
+  if (statusTxt) {
+    statusTxt.textContent = enabled
+      ? `Firewall activo · ${activeRules} de ${totalRules} reglas aplicadas`
+      : 'Firewall inactivo · las reglas no están aplicadas';
+  }
+  if (rulesCount) {
+    rulesCount.textContent = `${activeRules} regla${activeRules !== 1 ? 's' : ''} activa${activeRules !== 1 ? 's' : ''}`;
+  }
+
+  // Render tabla
+  renderRulesTable();
+}
+
+function renderRulesTable() {
+  const tbody = document.getElementById('fw-rules-body');
+  if (!tbody) return;
+
+  const rules = fwState.rules || [];
+  if (rules.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="fw-empty">No hay reglas · añade una con el botón de abajo</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rules.map(r => `
+    <tr class="${r.active ? '' : 'fw-row-inactive'}" id="fw-row-${r.id}">
+      <td class="fw-td-center">
+        <div class="fw-row-switch">
+          <label class="fw-switch" title="${r.active ? 'Desactivar' : 'Activar'} regla">
+            <input type="checkbox" ${r.active ? 'checked' : ''} onchange="toggleRule(${r.id}, this.checked)">
+            <span class="fw-switch-track"></span>
+          </label>
+        </div>
+      </td>
+      <td>
+        <span class="fw-proto fw-proto-${r.proto === 'both' ? 'both' : r.proto}">
+          ${r.proto === 'both' ? 'TCP+UDP' : r.proto.toUpperCase()}
+        </span>
+      </td>
+      <td><span class="fw-port">:${r.srcPort}</span></td>
+      <td class="fw-arrow-td">→</td>
+      <td><span class="fw-port">:${r.dstPort}</span></td>
+      <td><span class="fw-comment">${r.comment || '—'}</span></td>
+      <td>
+        <div class="fw-row-actions">
+          <button class="fw-btn-edit" onclick="openFwModal(${r.id})">editar</button>
+          <button class="fw-btn-del" onclick="deleteRule(${r.id})">✕</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ── Toggle firewall on/off ─────────────────────
+async function toggleFirewall() {
+  const btn = document.getElementById('fw-toggle-btn');
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+  try {
+    const res = await fetch('/api/firewall/toggle', { method: 'POST' });
+    const data = await res.json();
+    fwState.enabled = data.enabled;
+    renderFirewallUI();
+    if (data.ok) {
+      fwToast(data.enabled ? `🔒 Firewall activado · ${data.applied ?? 0} regla(s)` : '🔓 Firewall desactivado', 'success');
+    } else {
+      fwToast(`⚠ ${(data.errors || []).join(' | ')}`, 'error');
+    }
+  } catch(e) {
+    fwToast('Error al cambiar estado del firewall', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+  }
+}
+
+// ── Toggle regla individual ────────────────────
+async function toggleRule(id, active) {
+  try {
+    const res = await fetch(`/api/firewall/rules/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active })
+    });
+    const updated = await res.json();
+    const rule = fwState.rules.find(r => r.id === id);
+    if (rule) rule.active = active;
+    renderFirewallUI();
+    fwToast(active ? '✓ Regla activada' : '○ Regla desactivada');
+  } catch(e) {
+    fwToast('Error al actualizar regla', 'error');
+    loadFirewall(); // Recargar estado real
+  }
+}
+
+// ── Eliminar regla ─────────────────────────────
+async function deleteRule(id) {
+  const rule = fwState.rules.find(r => r.id === id);
+  const label = rule ? `:${rule.srcPort} → :${rule.dstPort}` : 'esta regla';
+  if (!confirm(`¿Eliminar la regla ${label}?`)) return;
+  try {
+    await fetch(`/api/firewall/rules/${id}`, { method: 'DELETE' });
+    fwState.rules = fwState.rules.filter(r => r.id !== id);
+    renderFirewallUI();
+    fwToast('✓ Regla eliminada');
+  } catch(e) {
+    fwToast('Error al eliminar regla', 'error');
+  }
+}
+
+// ── Re-aplicar reglas ──────────────────────────
+async function applyFirewall() {
+  try {
+    const res = await fetch('/api/firewall/apply', { method: 'POST' });
+    const data = await res.json();
+    fwToast(data.ok ? `✓ ${data.msg}` : `⚠ ${data.errors?.join(', ')}`, data.ok ? 'success' : 'error');
+  } catch(e) {
+    fwToast('Error al aplicar reglas', 'error');
+  }
+}
+
+// ── Modal añadir/editar regla ──────────────────
+function openFwModal(editId = null) {
+  fwEditingId = editId;
+  const modal = document.getElementById('fw-modal');
+  const title = document.getElementById('fw-modal-title');
+  const saveBtn = document.getElementById('fw-modal-save-btn');
+
+  if (editId) {
+    const rule = fwState.rules.find(r => r.id === editId);
+    if (!rule) return;
+    document.getElementById('fw-inp-proto').value = rule.proto;
+    document.getElementById('fw-inp-src').value = rule.srcPort;
+    document.getElementById('fw-inp-dst').value = rule.dstPort;
+    document.getElementById('fw-inp-comment').value = rule.comment || '';
+    document.getElementById('fw-inp-active').checked = rule.active;
+    if (title) title.textContent = 'Editar regla de firewall';
+    if (saveBtn) saveBtn.textContent = 'guardar cambios →';
+  } else {
+    document.getElementById('fw-inp-proto').value = 'tcp';
+    document.getElementById('fw-inp-src').value = '';
+    document.getElementById('fw-inp-dst').value = '';
+    document.getElementById('fw-inp-comment').value = '';
+    document.getElementById('fw-inp-active').checked = true;
+    if (title) title.textContent = 'Añadir regla de firewall';
+    if (saveBtn) saveBtn.textContent = 'añadir regla →';
+  }
+
+  if (modal) modal.style.display = 'flex';
+}
+
+function closeFwModal() {
+  const modal = document.getElementById('fw-modal');
+  if (modal) modal.style.display = 'none';
+  fwEditingId = null;
+}
+
+function closeFwModalBg(e) {
+  if (e.target.id === 'fw-modal') closeFwModal();
+}
+
+async function saveFwRule() {
+  const proto   = document.getElementById('fw-inp-proto').value;
+  const srcPort = parseInt(document.getElementById('fw-inp-src').value);
+  const dstPort = parseInt(document.getElementById('fw-inp-dst').value);
+  const comment = document.getElementById('fw-inp-comment').value.trim();
+  const active  = document.getElementById('fw-inp-active').checked;
+
+  if (!srcPort || srcPort < 1 || srcPort > 65535) {
+    fwToast('Puerto origen inválido (1-65535)', 'error'); return;
+  }
+  if (!dstPort || dstPort < 1 || dstPort > 65535) {
+    fwToast('Puerto destino inválido (1-65535)', 'error'); return;
+  }
+
+  const payload = { proto, srcPort, dstPort, comment, active };
+
+  try {
+    if (fwEditingId) {
+      const res = await fetch(`/api/firewall/rules/${fwEditingId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      const rule = data.rule || data; // compatibilidad
+      const idx = fwState.rules.findIndex(r => r.id === fwEditingId);
+      if (idx !== -1) fwState.rules[idx] = rule;
+      const ar = data.applyResult;
+      if (ar && !ar.ok) fwToast(`⚠ Guardada pero error al aplicar: ${(ar.errors||[]).join(', ')}`, 'error');
+      else fwToast('✓ Regla actualizada y aplicada');
+    } else {
+      const res = await fetch('/api/firewall/rules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.error) { fwToast(`Error: ${data.error}`, 'error'); return; }
+      const rule = data.rule || data;
+      fwState.rules.push(rule);
+      const ar = data.applyResult;
+      if (ar && !ar.ok) fwToast(`⚠ Guardada pero error al aplicar: ${(ar.errors||[]).join(', ')}`, 'error');
+      else fwToast('✓ Regla añadida y aplicada');
+    }
+    renderFirewallUI();
+    closeFwModal();
+  } catch(e) {
+    fwToast('Error al guardar regla', 'error');
+  }
+}
+
+// ── Init ───────────────────────────────────────
+loadFirewall();
+setInterval(loadFirewall, 30000); // Sincronizar cada 30s
+
+// ══════════════════════════════════════════════
+// SERVICIOS DEL SISTEMA (systemd)
+// ══════════════════════════════════════════════
+
+async function loadSysServices() {
+  try {
+    const res = await fetch('/api/sysservices');
+    const services = await res.json();
+    renderSysServices(services);
+  } catch (e) {
+    const grid = document.getElementById('sys-services-grid');
+    if (grid) grid.innerHTML = '<div class="loading-placeholder" style="color:var(--red)">Error cargando servicios del sistema</div>';
+  }
+}
+
+function renderSysServices(services) {
+  const grid = document.getElementById('sys-services-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  if (!services.length) {
+    grid.innerHTML = '<div class="loading-placeholder">No hay servicios del sistema configurados · pulsa "+ añadir servicio"</div>';
+    return;
+  }
+
+  services.forEach(svc => {
+    const card = document.createElement('div');
+    card.className = 'sys-svc-card';
+    card.id = `sys-svc-${svc.id}`;
+
+    const isActive = svc.status === 'active';
+    const isFailed = svc.status === 'failed';
+    const statusClass = isActive ? 'svc-status-active' : isFailed ? 'svc-status-failed' : 'svc-status-inactive';
+    const statusLabel = isActive ? 'activo' : isFailed ? 'error' : 'inactivo';
+
+    card.innerHTML = `
+      <div class="sys-svc-top">
+        <div class="sys-svc-info">
+          <div class="sys-svc-name">${escapeHtml(svc.displayName || svc.name)}</div>
+          <div class="sys-svc-unit">${escapeHtml(svc.name)}.service</div>
+          ${svc.description ? `<div class="sys-svc-desc">${escapeHtml(svc.description)}</div>` : ''}
+        </div>
+        <div class="sys-svc-status-badge ${statusClass}">
+          <span class="sys-svc-dot"></span>
+          ${statusLabel}
+        </div>
+      </div>
+      <div class="sys-svc-actions">
+        <button class="sys-svc-btn btn-start" onclick="sysServiceAction(${svc.id}, 'start')" title="Iniciar" ${isActive ? 'disabled' : ''}>
+          ▶ iniciar
+        </button>
+        <button class="sys-svc-btn btn-stop" onclick="sysServiceAction(${svc.id}, 'stop')" title="Detener" ${!isActive ? 'disabled' : ''}>
+          ■ detener
+        </button>
+        <button class="sys-svc-btn btn-restart" onclick="sysServiceAction(${svc.id}, 'restart')" title="Reiniciar">
+          ↺ reiniciar
+        </button>
+        <button class="sys-svc-btn btn-remove" onclick="removeSysService(${svc.id})" title="Quitar de la lista">
+          ✕
+        </button>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function sysServiceAction(id, action) {
+  const card = document.getElementById(`sys-svc-${id}`);
+  if (!card) return;
+
+  // Feedback visual
+  const btns = card.querySelectorAll('.sys-svc-btn');
+  btns.forEach(b => b.disabled = true);
+  const badge = card.querySelector('.sys-svc-status-badge');
+  if (badge) { badge.className = 'sys-svc-status-badge svc-status-pending'; badge.innerHTML = '<span class="sys-svc-dot"></span>ejecutando...'; }
+
+  try {
+    const res = await fetch(`/api/sysservices/${id}/action`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      await loadSysServices(); // recargar todo
+    } else {
+      showSysError(card, data.error || 'Error desconocido');
+      await loadSysServices();
+    }
+  } catch (e) {
+    showSysError(card, 'Error de red');
+    await loadSysServices();
+  }
+}
+
+function showSysError(card, msg) {
+  const err = document.createElement('div');
+  err.className = 'sys-svc-error';
+  err.textContent = '⚠ ' + msg;
+  card.appendChild(err);
+  setTimeout(() => err.remove(), 4000);
+}
+
+async function removeSysService(id) {
+  if (!confirm('¿Quitar este servicio de la lista? (no se desinstalará del sistema)')) return;
+  try {
+    await fetch(`/api/sysservices/${id}`, { method: 'DELETE' });
+    await loadSysServices();
+  } catch (e) {}
+}
+
+// ── Modal añadir servicio del sistema ────────────────────────────────────────
+
+function openSysServiceModal() {
+  document.getElementById('syssvc-modal').classList.add('open');
+  document.getElementById('syssvc-inp-name').focus();
+}
+
+function closeSysServiceModal() {
+  document.getElementById('syssvc-modal').classList.remove('open');
+  document.getElementById('syssvc-inp-name').value = '';
+  document.getElementById('syssvc-inp-display').value = '';
+  document.getElementById('syssvc-inp-desc').value = '';
+}
+
+function closeSysServiceModalBg(e) {
+  if (e.target === document.getElementById('syssvc-modal')) closeSysServiceModal();
+}
+
+async function addSysService() {
+  const name = document.getElementById('syssvc-inp-name').value.trim();
+  const displayName = document.getElementById('syssvc-inp-display').value.trim();
+  const description = document.getElementById('syssvc-inp-desc').value.trim();
+  if (!name) { document.getElementById('syssvc-inp-name').focus(); return; }
+
+  try {
+    const res = await fetch('/api/sysservices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, displayName: displayName || name, description })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      closeSysServiceModal();
+      await loadSysServices();
+    } else {
+      alert(data.error || 'Error añadiendo el servicio');
+    }
+  } catch (e) {
+    alert('Error de red');
+  }
+}
+
+// ── Modal de logs ─────────────────────────────────────────────────────────────
+
+function closeSysLogModal() {
+  document.getElementById('syslog-modal').classList.remove('open');
+}
+
+function closeSysLogModalBg(e) {
+  if (e.target === document.getElementById('syslog-modal')) closeSysLogModal();
+}
+
+// Arrancar carga inicial
+loadSysServices();
+setInterval(loadSysServices, 15000);

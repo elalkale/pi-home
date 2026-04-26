@@ -71,6 +71,63 @@
       <div class="loading-placeholder">Cargando servicios...</div>
     </div>
 
+    <!-- SERVICIOS DEL SISTEMA -->
+    <div class="section-header" style="margin-top: 3rem;">
+      <span class="section-title">⚙️ servicios del sistema</span>
+      <button class="add-btn" onclick="openSysServiceModal()">+ añadir servicio</button>
+    </div>
+
+    <div class="sys-services-grid" id="sys-services-grid">
+      <div class="loading-placeholder">Cargando servicios del sistema...</div>
+    </div>
+
+    <!-- FIREWALL -->
+    <div class="section-header" style="margin-top: 3rem;">
+      <span class="section-title">🔥 firewall · redirección de puertos</span>
+      <div class="fw-header-actions">
+        <span class="fw-status-badge" id="fw-status-badge">desactivado</span>
+        <button class="fw-toggle-btn" id="fw-toggle-btn" onclick="toggleFirewall()">
+          <span class="fw-toggle-icon" id="fw-toggle-icon">⏻</span>
+          <span id="fw-toggle-label">activar firewall</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Barra de estado del firewall -->
+    <div class="fw-status-bar" id="fw-status-bar">
+      <div class="fw-status-left">
+        <span class="fw-dot" id="fw-dot"></span>
+        <span class="fw-status-text" id="fw-status-text">Firewall inactivo · las reglas no están aplicadas</span>
+      </div>
+      <div class="fw-status-right">
+        <span class="fw-rules-count" id="fw-rules-count">0 reglas activas</span>
+        <button class="fw-apply-btn" onclick="applyFirewall()" title="Re-aplicar reglas ahora">↻ re-aplicar</button>
+      </div>
+    </div>
+
+    <!-- Tabla de reglas -->
+    <div class="fw-table-wrapper">
+      <table class="fw-table" id="fw-table">
+        <thead>
+          <tr>
+            <th class="fw-th-active">activa</th>
+            <th>proto</th>
+            <th>puerto origen</th>
+            <th class="fw-arrow-col">→</th>
+            <th>puerto destino</th>
+            <th>comentario</th>
+            <th>acciones</th>
+          </tr>
+        </thead>
+        <tbody id="fw-rules-body">
+          <tr><td colspan="7" class="fw-empty">Cargando reglas...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Botón añadir regla -->
+    <button class="fw-add-rule-btn" onclick="openFwModal()">+ añadir regla</button>
+
     <!-- FOOTER -->
     <div class="footer">
       <span class="footer-text">homelab v2.0 · hecho con <span class="accent-text">♥</span> en Raspberry Pi</span>
@@ -181,6 +238,72 @@
         <button class="btn-cancel" onclick="closeModal()">cancelar</button>
         <button class="btn-add" onclick="addService()">añadir →</button>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL FIREWALL -->
+  <div class="modal-overlay" id="fw-modal" onclick="closeFwModalBg(event)">
+    <div class="modal fw-modal-inner">
+      <h3 id="fw-modal-title">Añadir regla de firewall</h3>
+      <div class="fw-modal-row">
+        <div class="fw-modal-col">
+          <label>Protocolo</label>
+          <select id="fw-inp-proto" class="fw-select">
+            <option value="tcp">TCP</option>
+            <option value="udp">UDP</option>
+            <option value="both">TCP+UDP</option>
+          </select>
+        </div>
+        <div class="fw-modal-col">
+          <label>Puerto origen <span class="fw-label-hint">(externo)</span></label>
+          <input type="number" id="fw-inp-src" placeholder="ej: 80" min="1" max="65535" />
+        </div>
+        <div class="fw-modal-col">
+          <label>Puerto destino <span class="fw-label-hint">(interno)</span></label>
+          <input type="number" id="fw-inp-dst" placeholder="ej: 8080" min="1" max="65535" />
+        </div>
+      </div>
+      <label>Comentario <span class="fw-label-hint">(opcional)</span></label>
+      <input type="text" id="fw-inp-comment" placeholder="ej: HTTP hacia mi app web" />
+      <div class="fw-modal-toggle-row">
+        <label class="fw-switch-label">Activar regla inmediatamente</label>
+        <label class="fw-switch">
+          <input type="checkbox" id="fw-inp-active" checked>
+          <span class="fw-switch-track"></span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeFwModal()">cancelar</button>
+        <button class="btn-add" id="fw-modal-save-btn" onclick="saveFwRule()">añadir regla →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL AÑADIR SERVICIO DEL SISTEMA -->
+  <div class="modal-overlay" id="syssvc-modal" onclick="closeSysServiceModalBg(event)">
+    <div class="modal">
+      <h3>Añadir servicio del sistema</h3>
+      <label>Nombre del servicio <span class="fw-label-hint">(nombre exacto de systemd)</span></label>
+      <input type="text" id="syssvc-inp-name" placeholder="ej: nginx, docker, ssh" />
+      <label>Nombre visible</label>
+      <input type="text" id="syssvc-inp-display" placeholder="ej: Nginx Web Server" />
+      <label>Descripción <span class="fw-label-hint">(opcional)</span></label>
+      <input type="text" id="syssvc-inp-desc" placeholder="ej: Servidor web principal" />
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeSysServiceModal()">cancelar</button>
+        <button class="btn-add" onclick="addSysService()">añadir →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL LOG DE SERVICIO -->
+  <div class="modal-overlay" id="syslog-modal" onclick="closeSysLogModalBg(event)">
+    <div class="modal syslog-modal-inner">
+      <div class="syslog-header">
+        <h3 id="syslog-title">logs del servicio</h3>
+        <button class="panel-close" onclick="closeSysLogModal()">✕</button>
+      </div>
+      <div class="syslog-body" id="syslog-body">Cargando logs...</div>
     </div>
   </div>
 
