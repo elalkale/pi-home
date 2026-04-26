@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pi Home · HomeLab Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🍓</text></svg>" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+
+  <div class="grid-bg"></div>
+  <div class="glow-orb" id="glow-orb"></div>
+  <div class="glow-orb-2" id="glow-orb-2"></div>
+
+  <div class="wrapper">
+
+    <!-- HEADER -->
+    <header>
+      <div class="header-left">
+        <div class="pi-badge">
+          <span class="dot"></span>
+          <span id="hostname">raspberry pi 4</span> · <span id="local-ip">cargando...</span>
+        </div>
+        <h1>Mi <span class="accent-text">HomeLab</span></h1>
+        <p class="subtitle">~ dashboard de servicios personales</p>
+      </div>
+      <div class="header-right">
+        <div class="time-display" id="clock"></div>
+        <button class="theme-toggle-btn" onclick="toggleThemePanel()" title="Personalización">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+          </svg>
+          tema
+        </button>
+      </div>
+    </header>
+
+    <!-- STATS -->
+    <div class="stats-row">
+      <div class="stat-item">
+        <span class="stat-label">Uptime</span>
+        <span class="stat-value green" id="stat-uptime">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Servicios</span>
+        <span class="stat-value accent" id="stat-services">0</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">CPU Temp</span>
+        <span class="stat-value amber" id="stat-temp">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">RAM usada</span>
+        <span class="stat-value blue" id="stat-ram">—</span>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Disco</span>
+        <span class="stat-value blue" id="stat-disk">—</span>
+      </div>
+    </div>
+
+    <!-- SERVICIOS -->
+    <div class="section-header">
+      <span class="section-title">servicios activos</span>
+      <button class="add-btn" onclick="openModal()">+ añadir servicio</button>
+    </div>
+
+    <div class="services-grid" id="services-grid">
+      <div class="loading-placeholder">Cargando servicios...</div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <span class="footer-text">homelab v2.0 · hecho con <span class="accent-text">♥</span> en Raspberry Pi</span>
+      <div class="uptime-bar" id="uptime-bar"></div>
+    </div>
+
+  </div>
+
+  <!-- PANEL DE PERSONALIZACIÓN -->
+  <div class="theme-panel" id="theme-panel">
+    <div class="theme-panel-header">
+      <span class="theme-panel-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        personalización
+      </span>
+      <button class="panel-close" onclick="toggleThemePanel()">✕</button>
+    </div>
+
+    <!-- TEMAS PRESET -->
+    <div class="panel-section">
+      <div class="panel-label">temas</div>
+      <div class="themes-grid">
+        <button class="theme-btn active" data-theme="matrix" onclick="setTheme('matrix')">
+          <div class="theme-preview matrix-prev"></div>
+          <span>Matrix</span>
+        </button>
+        <button class="theme-btn" data-theme="cyber" onclick="setTheme('cyber')">
+          <div class="theme-preview cyber-prev"></div>
+          <span>Cyber</span>
+        </button>
+        <button class="theme-btn" data-theme="sunset" onclick="setTheme('sunset')">
+          <div class="theme-preview sunset-prev"></div>
+          <span>Sunset</span>
+        </button>
+        <button class="theme-btn" data-theme="ocean" onclick="setTheme('ocean')">
+          <div class="theme-preview ocean-prev"></div>
+          <span>Ocean</span>
+        </button>
+        <button class="theme-btn" data-theme="lavender" onclick="setTheme('lavender')">
+          <div class="theme-preview lavender-prev"></div>
+          <span>Lavender</span>
+        </button>
+        <button class="theme-btn" data-theme="ember" onclick="setTheme('ember')">
+          <div class="theme-preview ember-prev"></div>
+          <span>Ember</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ARCO RGB PERSONALIZADO -->
+    <div class="panel-section">
+      <div class="panel-label">color personalizado (rgb)</div>
+      <div class="rgb-arc-wrapper">
+        <canvas id="rgb-arc" width="220" height="120"></canvas>
+        <div class="rgb-arc-handle" id="arc-handle"></div>
+        <div class="rgb-color-preview" id="rgb-preview"></div>
+      </div>
+      <div class="rgb-sliders">
+        <div class="rgb-slider-row">
+          <span class="rgb-label" style="color:#ff6b6b">R</span>
+          <input type="range" min="0" max="255" value="34" id="slider-r" class="rgb-slider slider-r" oninput="updateFromSliders()">
+          <span class="rgb-val" id="val-r">34</span>
+        </div>
+        <div class="rgb-slider-row">
+          <span class="rgb-label" style="color:#6bff6b">G</span>
+          <input type="range" min="0" max="255" value="197" id="slider-g" class="rgb-slider slider-g" oninput="updateFromSliders()">
+          <span class="rgb-val" id="val-g">197</span>
+        </div>
+        <div class="rgb-slider-row">
+          <span class="rgb-label" style="color:#6b9eff">B</span>
+          <input type="range" min="0" max="255" value="94" id="slider-b" class="rgb-slider slider-b" oninput="updateFromSliders()">
+          <span class="rgb-val" id="val-b">94</span>
+        </div>
+      </div>
+      <button class="apply-rgb-btn" onclick="applyCustomColor()">aplicar color →</button>
+    </div>
+
+    <!-- HEX INPUT -->
+    <div class="panel-section">
+      <div class="panel-label">o introduce hex</div>
+      <div class="hex-input-row">
+        <span class="hex-hash">#</span>
+        <input type="text" id="hex-input" class="hex-input" maxlength="6" placeholder="22c55e" oninput="updateFromHex()">
+        <div class="hex-swatch" id="hex-swatch"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- OVERLAY DEL PANEL -->
+  <div class="panel-overlay" id="panel-overlay" onclick="toggleThemePanel()"></div>
+
+  <!-- MODAL AÑADIR SERVICIO -->
+  <div class="modal-overlay" id="modal" onclick="closeModalBg(event)">
+    <div class="modal">
+      <h3>Añadir nuevo servicio</h3>
+      <label>Nombre del servicio</label>
+      <input type="text" id="inp-name" placeholder="ej: Nextcloud" />
+      <label>Descripción</label>
+      <input type="text" id="inp-desc" placeholder="ej: Almacenamiento en la nube" />
+      <label>URL completa</label>
+      <input type="text" id="inp-url" placeholder="ej: http://192.168.1.100:8080" />
+      <label>Puerto (visible en tarjeta)</label>
+      <input type="text" id="inp-port" placeholder="ej: :8080" />
+      <label>Icono</label>
+      <div class="icon-grid" id="icon-grid"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">cancelar</button>
+        <button class="btn-add" onclick="addService()">añadir →</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
