@@ -128,6 +128,40 @@
     <!-- Botón añadir regla -->
     <button class="fw-add-rule-btn" onclick="openFwModal()">+ añadir regla</button>
 
+    <!-- PI-HOLE -->
+<div class="section-header" style="margin-top: 3rem;">
+  <span class="section-title">🛡️ pi-hole · bloqueo de anuncios</span>
+  <div class="fw-header-actions">
+    <span class="fw-status-badge" id="pihole-status-badge">cargando...</span>
+    <button class="fw-toggle-btn" id="pihole-toggle-btn" onclick="togglePihole()">
+      <span id="pihole-toggle-label">⏻ toggle</span>
+    </button>
+  </div>
+</div>
+
+<div class="stats-row" id="pihole-stats">
+  <div class="stat-item">
+    <span class="stat-label">Dominios bloqueados</span>
+    <span class="stat-value accent" id="ph-domains">—</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Consultas hoy</span>
+    <span class="stat-value green" id="ph-queries">—</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Anuncios bloqueados</span>
+    <span class="stat-value amber" id="ph-blocked">—</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">% bloqueado</span>
+    <span class="stat-value blue" id="ph-percent">—</span>
+  </div>
+  <div class="stat-item">
+    <span class="stat-label">Clientes únicos</span>
+    <span class="stat-value blue" id="ph-clients">—</span>
+  </div>
+</div>
+
     <!-- FOOTER -->
     <div class="footer">
       <span class="footer-text">homelab v2.0 · hecho con <span class="accent-text">♥</span> en Raspberry Pi</span>
@@ -135,6 +169,20 @@
     </div>
 
   </div>
+
+ <!-- Añade esto donde quieras el widget -->
+<div id="chat-widget">
+  <div id="chat-messages"></div>
+  <div id="chat-controls">
+    <input
+      id="chat-input"
+      type="text"
+      placeholder="Pregunta al asistente..."
+      onkeydown="if(event.key==='Enter') sendChatMessage()"
+    />
+    <button onclick="sendChatMessage()">Enviar</button>
+  </div>
+</div>
 
   <!-- PANEL DE PERSONALIZACIÓN -->
   <div class="theme-panel" id="theme-panel">

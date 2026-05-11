@@ -1,0 +1,38 @@
+[
+  {
+    "id": 2,
+    "name": "ssh",
+    "displayName": "SSH",
+    "description": "Acceso remoto"
+  },
+  {
+    "id": 1776327018057,
+    "name": "pi-home",
+    "displayName": "pi-home",
+    "description": ""
+  },
+  {
+    "id": 1776327140814,
+    "name": "vsftpd",
+    "displayName": "FTP",
+    "description": "FTP"
+  },
+  {
+    "id": 1776453650646,
+    "name": "tinyllama",
+    "displayName": "IA Tinyllama",
+    "description": "IA local"
+  },
+  {
+    "id": 1776457148961,
+    "name": "galeria",
+    "displayName": "Galeria online",
+    "description": ""
+  },
+  {
+    "id": 1776625495102,
+    "name": "discordbot",
+    "displayName": "Bot akbot",
+    "description": ""
+  }
+]

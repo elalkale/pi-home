@@ -931,3 +931,95 @@ function closeSysLogModalBg(e) {
 // Arrancar carga inicial
 loadSysServices();
 setInterval(loadSysServices, 15000);
+
+// ─── Pi-hole ──────────────────────────────────────────────────────────────────
+async function loadPihole() {
+  try {
+    const data = await fetch('/api/pihole').then(r => r.json());
+    if (data.error) {
+      document.getElementById('pihole-status-badge').textContent = 'sin conexión';
+      return;
+    }
+    const isEnabled = data.status === 'enabled';
+    const badge = document.getElementById('pihole-status-badge');
+    badge.textContent = isEnabled ? 'activo' : 'desactivado';
+    badge.style.color = isEnabled ? 'var(--accent)' : 'var(--text-muted)';
+
+    document.getElementById('ph-domains').textContent  = data.domains_blocked.toLocaleString();
+    document.getElementById('ph-queries').textContent  = data.dns_queries_today.toLocaleString();
+    document.getElementById('ph-blocked').textContent  = data.ads_blocked_today.toLocaleString();
+    document.getElementById('ph-percent').textContent  = data.ads_percent + '%';
+    document.getElementById('ph-clients').textContent  = data.unique_clients;
+  } catch (e) {
+    document.getElementById('pihole-status-badge').textContent = 'error';
+  }
+}
+
+async function togglePihole() {
+  const badge = document.getElementById('pihole-status-badge').textContent;
+  const enable = badge !== 'activo';
+  await fetch('/api/pihole/toggle', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enable })
+  });
+  setTimeout(loadPihole, 800);
+}
+
+// Añadir al intervalo de refresco existente o crear uno nuevo:
+loadPihole();
+setInterval(loadPihole, 30000);
+
+// ─── Refresco automático cada 2 minutos ──────────────────────────────────────
+const REFRESH_INTERVAL = 2 * 60 * 1000; // 2 minutos en ms
+
+setInterval(() => {
+  loadSystemInfo();
+  loadServices();
+  loadSysServices();
+  loadPihole();
+}, REFRESH_INTERVAL);
+
+
+
+// --- Chat IA ---
+const chatHistory = [];
+
+async function sendChatMessage() {
+  const input = document.getElementById('chat-input');
+  const message = input.value.trim();
+  if (!message) return;
+
+  appendMessage('user', message);
+  chatHistory.push({ role: 'user', content: message });
+  input.value = '';
+  appendMessage('assistant', '⏳ Pensando...');
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history: chatHistory.slice(-6) }) // últimos 3 turnos
+    });
+
+    const data = await res.json();
+
+    // Reemplazar el "Pensando..."
+    const msgs = document.querySelectorAll('.chat-message.assistant');
+    msgs[msgs.length - 1].textContent = data.reply;
+
+    chatHistory.push({ role: 'assistant', content: data.reply });
+
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function appendMessage(role, text) {
+  const box = document.getElementById('chat-messages');
+  const div = document.createElement('div');
+  div.className = `chat-message ${role}`;
+  div.textContent = text;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+}
