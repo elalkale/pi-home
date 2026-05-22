@@ -1,9 +1,8 @@
-# 🍓 Pi Home Dashboard v2.1
+# 🍓 Pi Home Dashboard v2.0
 
 Dashboard personal para Raspberry Pi con sistema de temas y personalización RGB.
 
-## Nuevas funcionalidades v2.1
-- **Añadido Firewwall interactivo
+## Nuevas funcionalidades v2.0
 - **6 temas preset**: Matrix, Cyber, Sunset, Ocean, Lavender, Ember
 - **Arco RGB interactivo**: selecciona cualquier color del espectro arrastrando
 - **Sliders R/G/B**: control granular por canal
