@@ -333,6 +333,23 @@
     </div>
   </div>
 
+  <!-- MODAL AUTENTICACIÓN (API KEY) -->
+  <div class="modal-overlay" id="auth-modal">
+    <div class="modal">
+      <h3>🔒 Autenticación requerida</h3>
+      <p class="fw-label-hint" style="margin-bottom:1rem;display:block;">
+        Las acciones que modifican el sistema (reiniciar servicios, firewall, etc.)
+        requieren la API key configurada en el <code>.env</code> del servidor.
+      </p>
+      <label>API Key</label>
+      <input type="password" id="auth-inp-key" placeholder="pega aquí tu API key" onkeydown="if(event.key==='Enter') saveApiKey()" />
+      <div class="modal-actions" id="auth-modal-actions">
+        <button class="btn-cancel" onclick="closeAuthModal()">seguir solo lectura</button>
+        <button class="btn-add" onclick="saveApiKey()">guardar →</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/app.js"></script>
 </body>
 </html>

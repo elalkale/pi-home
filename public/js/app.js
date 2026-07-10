@@ -3,6 +3,87 @@ const ICONS = ['🌐','📁','🖥️','🔒','📊','🎬','🎵','📧','🔧'
 let selectedIcon = '🌐';
 
 // ══════════════════════════════════════════════
+// AUTENTICACIÓN (API KEY)
+// ══════════════════════════════════════════════
+// Los endpoints POST/PUT/DELETE bajo /api/* requieren la cabecera X-API-Key
+// (ver server.js). La key se guarda en localStorage tras introducirla una vez.
+const API_KEY_STORAGE = 'pi-api-key';
+let pendingAuthResolve = null;
+
+function getApiKey() {
+  return localStorage.getItem(API_KEY_STORAGE) || '';
+}
+
+function openAuthModal() {
+  document.getElementById('auth-modal')?.classList.add('open');
+  setTimeout(() => document.getElementById('auth-inp-key')?.focus(), 50);
+}
+
+function closeAuthModal() {
+  document.getElementById('auth-modal')?.classList.remove('open');
+  if (pendingAuthResolve) { pendingAuthResolve(false); pendingAuthResolve = null; }
+}
+
+async function saveApiKey() {
+  const input = document.getElementById('auth-inp-key');
+  const key = (input?.value || '').trim();
+  if (!key) { input?.focus(); return; }
+
+  localStorage.setItem(API_KEY_STORAGE, key);
+
+  // Validamos contra el servidor sin ejecutar ninguna acción real
+  try {
+    const res = await fetch('/api/auth/verify', {
+      method: 'POST',
+      headers: { 'X-API-Key': key }
+    });
+    if (!res.ok) {
+      localStorage.removeItem(API_KEY_STORAGE);
+      input.style.borderColor = 'var(--red)';
+      input.placeholder = 'key incorrecta, inténtalo de nuevo';
+      input.value = '';
+      return;
+    }
+  } catch (e) {
+    input.style.borderColor = 'var(--red)';
+    return;
+  }
+
+  input.style.borderColor = '';
+  document.getElementById('auth-modal')?.classList.remove('open');
+  if (pendingAuthResolve) { pendingAuthResolve(true); pendingAuthResolve = null; }
+}
+
+// Espera a que el usuario introduzca una key válida (o cancele)
+function waitForAuth() {
+  return new Promise(resolve => {
+    pendingAuthResolve = resolve;
+    openAuthModal();
+  });
+}
+
+// Wrapper de fetch para todas las llamadas que mutan estado (POST/PUT/DELETE).
+// Añade la cabecera X-API-Key y, si el servidor responde 401, pide la key
+// al usuario y reintenta una vez.
+async function apiFetch(url, options = {}) {
+  const doFetch = () => fetch(url, {
+    ...options,
+    headers: { ...(options.headers || {}), 'X-API-Key': getApiKey() }
+  });
+
+  let res = await doFetch();
+
+  if (res.status === 401) {
+    const authed = await waitForAuth();
+    if (!authed) throw new Error('Acción cancelada: se requiere autenticación');
+    res = await doFetch();
+    if (res.status === 401) throw new Error('API key inválida');
+  }
+
+  return res;
+}
+
+// ══════════════════════════════════════════════
 // RELOJ
 // ══════════════════════════════════════════════
 function updateClock() {
@@ -128,7 +209,7 @@ async function deleteService(event, id) {
   event.preventDefault();
   event.stopPropagation();
   if (!confirm('¿Eliminar este servicio?')) return;
-  await fetch(`/api/services/${id}`, { method: 'DELETE' });
+  await apiFetch(`/api/services/${id}`, { method: 'DELETE' });
   loadServices();
 }
 
@@ -176,7 +257,7 @@ async function addService() {
     document.getElementById('inp-name').style.borderColor = 'var(--red)';
     return;
   }
-  await fetch('/api/services', {
+  await apiFetch('/api/services', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, desc: desc || 'Sin descripción', url: url || '#', port, icon: selectedIcon })
@@ -605,7 +686,7 @@ async function toggleFirewall() {
   const btn = document.getElementById('fw-toggle-btn');
   if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
   try {
-    const res = await fetch('/api/firewall/toggle', { method: 'POST' });
+    const res = await apiFetch('/api/firewall/toggle', { method: 'POST' });
     const data = await res.json();
     fwState.enabled = data.enabled;
     renderFirewallUI();
@@ -624,7 +705,7 @@ async function toggleFirewall() {
 // ── Toggle regla individual ────────────────────
 async function toggleRule(id, active) {
   try {
-    const res = await fetch(`/api/firewall/rules/${id}`, {
+    const res = await apiFetch(`/api/firewall/rules/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ active })
@@ -646,7 +727,7 @@ async function deleteRule(id) {
   const label = rule ? `:${rule.srcPort} → :${rule.dstPort}` : 'esta regla';
   if (!confirm(`¿Eliminar la regla ${label}?`)) return;
   try {
-    await fetch(`/api/firewall/rules/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/firewall/rules/${id}`, { method: 'DELETE' });
     fwState.rules = fwState.rules.filter(r => r.id !== id);
     renderFirewallUI();
     fwToast('✓ Regla eliminada');
@@ -658,7 +739,7 @@ async function deleteRule(id) {
 // ── Re-aplicar reglas ──────────────────────────
 async function applyFirewall() {
   try {
-    const res = await fetch('/api/firewall/apply', { method: 'POST' });
+    const res = await apiFetch('/api/firewall/apply', { method: 'POST' });
     const data = await res.json();
     fwToast(data.ok ? `✓ ${data.msg}` : `⚠ ${data.errors?.join(', ')}`, data.ok ? 'success' : 'error');
   } catch(e) {
@@ -724,7 +805,7 @@ async function saveFwRule() {
 
   try {
     if (fwEditingId) {
-      const res = await fetch(`/api/firewall/rules/${fwEditingId}`, {
+      const res = await apiFetch(`/api/firewall/rules/${fwEditingId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -737,7 +818,7 @@ async function saveFwRule() {
       if (ar && !ar.ok) fwToast(`⚠ Guardada pero error al aplicar: ${(ar.errors||[]).join(', ')}`, 'error');
       else fwToast('✓ Regla actualizada y aplicada');
     } else {
-      const res = await fetch('/api/firewall/rules', {
+      const res = await apiFetch('/api/firewall/rules', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -842,7 +923,7 @@ async function sysServiceAction(id, action) {
   if (badge) { badge.className = 'sys-svc-status-badge svc-status-pending'; badge.innerHTML = '<span class="sys-svc-dot"></span>ejecutando...'; }
 
   try {
-    const res = await fetch(`/api/sysservices/${id}/action`, {
+    const res = await apiFetch(`/api/sysservices/${id}/action`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action })
@@ -871,7 +952,7 @@ function showSysError(card, msg) {
 async function removeSysService(id) {
   if (!confirm('¿Quitar este servicio de la lista? (no se desinstalará del sistema)')) return;
   try {
-    await fetch(`/api/sysservices/${id}`, { method: 'DELETE' });
+    await apiFetch(`/api/sysservices/${id}`, { method: 'DELETE' });
     await loadSysServices();
   } catch (e) {}
 }
@@ -901,7 +982,7 @@ async function addSysService() {
   if (!name) { document.getElementById('syssvc-inp-name').focus(); return; }
 
   try {
-    const res = await fetch('/api/sysservices', {
+    const res = await apiFetch('/api/sysservices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, displayName: displayName || name, description })
@@ -958,7 +1039,7 @@ async function loadPihole() {
 async function togglePihole() {
   const badge = document.getElementById('pihole-status-badge').textContent;
   const enable = badge !== 'activo';
-  await fetch('/api/pihole/toggle', {
+  await apiFetch('/api/pihole/toggle', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enable })
