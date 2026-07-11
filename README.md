@@ -1,15 +1,6 @@
-# 🍓 Pi Home Dashboard v2.0.1
+# 🍓 Pi Home Dashboard v2.0
 
 Dashboard personal para Raspberry Pi con sistema de temas y personalización RGB.
-
-## Nuevas cambios v2.0.1
-- server.js
-Middleware requireApiKey exige la cabecera X-API-Key en todos los POST/PUT/DELETE bajo /api/. Los GET no se alteran. Si no hay API_KEY en . env, se bloquean las mutaciones. Endpoint POST /api/auth/verify para validar la clave sin acciones reales.
-- app.js
-Wrapper apiFetch() que añade la cabecera con la key de localStorage. Si hay respuesta 401, abre el modal de login, valida la key y reintenta la petición. Las 12 llamadas mutantes ahora usan apiFetch.
-- index.html
-Nuevo modal de autenticación usa clases CSS existentes. Incluye botón "seguir solo lectura" para navegar sin la clave.
-- 
 
 ## Nuevas funcionalidades v2.0
 - **6 temas preset**: Matrix, Cyber, Sunset, Ocean, Lavender, Ember
@@ -21,6 +12,37 @@ Nuevo modal de autenticación usa clases CSS existentes. Incluye botón "seguir 
 ## Instalación
 ```bash
 npm install
+```
+
+### 1. Variables de entorno
+```bash
+cp .env.example .env
+nano .env   # define API_KEY (genera una con: openssl rand -hex 32)
+```
+
+### 2. Wrappers de sudo (iptables / systemctl)
+El dashboard necesita permisos elevados para gestionar el firewall y los
+servicios systemd. En vez de dar sudo NOPASSWD sobre esos binarios
+completos, instala los wrappers de mínimo privilegio en `deploy/`:
+```bash
+sudo cp deploy/pi-home-iptables deploy/pi-home-systemctl /usr/local/bin/
+sudo chown root:root /usr/local/bin/pi-home-iptables /usr/local/bin/pi-home-systemctl
+sudo chmod 750 /usr/local/bin/pi-home-iptables /usr/local/bin/pi-home-systemctl
+sudo cp deploy/sudoers-pi-home /etc/sudoers.d/pi-home   # edita el usuario antes
+sudo visudo -c
+```
+
+### 3. Datos de servicios y firewall (opcional)
+`data/*.json` no se versiona (contiene tu configuración real). Al arrancar
+por primera vez, el dashboard crea estos archivos automáticamente con
+valores por defecto vacíos/seguros. Si prefieres partir de un ejemplo:
+```bash
+cp data/firewall.example.json data/firewall.json
+cp data/sysservices.example.json data/sysservices.json
+```
+
+### 4. Arrancar
+```bash
 npm start
 ```
 

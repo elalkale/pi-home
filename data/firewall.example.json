@@ -1,0 +1,13 @@
+{
+  "enabled": false,
+  "rules": [
+    {
+      "id": 1,
+      "proto": "tcp",
+      "srcPort": 80,
+      "dstPort": 8888,
+      "comment": "Ejemplo: HTTP -> app web",
+      "active": false
+    }
+  ]
+}

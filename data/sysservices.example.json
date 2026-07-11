@@ -1,0 +1,8 @@
+[
+  {
+    "id": 1,
+    "name": "ssh",
+    "displayName": "SSH",
+    "description": "Acceso remoto"
+  }
+]
