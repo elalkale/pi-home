@@ -5,9 +5,31 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const fetch = require('node-fetch');
+const { spawnSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
+
+// ─── Privilegios: wrappers de mínimo privilegio ──────────────────────────────
+// En vez de dar NOPASSWD sobre iptables/systemctl completos (lo que permitiría
+// CUALQUIER subcomando si algo sale mal), sudo solo puede invocar estos dos
+// scripts, que validan internamente qué se les pide. Ver /deploy en el repo
+// para el contenido de los scripts y el archivo sudoers de ejemplo.
+const IPTABLES_WRAPPER  = '/usr/local/bin/pi-home-iptables';
+const SYSTEMCTL_WRAPPER = '/usr/local/bin/pi-home-systemctl';
+
+// Ejecuta un wrapper vía sudo con argumentos como array (nunca por shell,
+// así que no hay interpolación de string que pueda inyectar comandos)
+function sudoRun(wrapperPath, args, timeout = 5000) {
+  const result = spawnSync('sudo', [wrapperPath, ...args], { timeout, encoding: 'utf8' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const err = new Error((result.stderr || `exit code ${result.status}`).trim());
+    err.stderr = result.stderr;
+    throw err;
+  }
+  return result.stdout;
+}
 
 // ─── Auth: API key para endpoints que modifican estado ───────────────────────
 // El servidor ejecuta comandos con sudo (iptables, systemctl), así que cualquier
@@ -203,7 +225,6 @@ function getLocalIP() {
 }
 
 // ─── API: Firewall (iptables) ─────────────────────────────────────────────────
-const { execSync } = require('child_process');
 const FIREWALL_FILE = path.join(__dirname, 'data', 'firewall.json');
 
 // Comentario único que identifica reglas gestionadas por pi-home
@@ -231,16 +252,25 @@ function saveFirewall(data) {
   fs.writeFileSync(FIREWALL_FILE, JSON.stringify(data, null, 2));
 }
 
-// Ejecuta un comando iptables con sudo, devuelve { ok, output, error }
-function ipt(cmd) {
-  try {
-    const output = execSync(`sudo iptables ${cmd}`, { timeout: 5000 }).toString().trim();
-    return { ok: true, output };
-  } catch (e) {
-    const error = (e.stderr ? e.stderr.toString() : e.message).trim();
-    console.error(`[iptables ERROR] sudo iptables ${cmd}\n  → ${error}`);
-    return { ok: false, error };
-  }
+// Lista las reglas NAT/PREROUTING actuales vía el wrapper (equivalente a
+// `iptables -t nat -L PREROUTING -n --line-numbers`, pero sin sudo abierto)
+function iptList() {
+  return sudoRun(IPTABLES_WRAPPER, ['list']);
+}
+
+// Añade una regla de redirección NAT vía el wrapper
+function iptAdd(proto, srcPort, dstPort) {
+  return sudoRun(IPTABLES_WRAPPER, ['add', proto, String(srcPort), String(dstPort)]);
+}
+
+// Borra una regla NAT por número de línea vía el wrapper
+function iptDel(lineNum) {
+  return sudoRun(IPTABLES_WRAPPER, ['del', String(lineNum)]);
+}
+
+// Persiste las reglas para que sobrevivan a reinicios
+function iptSave() {
+  return sudoRun(IPTABLES_WRAPPER, ['save']);
 }
 
 // Elimina SOLO las reglas de PREROUTING marcadas con el comentario pi-home-fw
@@ -248,8 +278,7 @@ function ipt(cmd) {
 function clearPiHomeRules() {
   try {
     // Obtenemos las reglas numeradas
-    const out = execSync('sudo iptables -t nat -L PREROUTING --line-numbers -n', { timeout: 5000 })
-      .toString().split('\n');
+    const out = iptList().split('\n');
 
     // Buscamos líneas que contengan nuestro comentario, de abajo a arriba
     // (para que los números de línea no cambien al borrar)
@@ -260,7 +289,7 @@ function clearPiHomeRules() {
       .sort((a, b) => b - a); // orden descendente
 
     for (const lineNum of linesToDelete) {
-      ipt(`-t nat -D PREROUTING ${lineNum}`);
+      try { iptDel(lineNum); } catch (e) { /* seguimos con el resto */ }
     }
     return { ok: true, removed: linesToDelete.length };
   } catch (e) {
@@ -306,21 +335,18 @@ function applyIptables(fwData) {
       }
 
       // Añadir con comentario para poder identificarla después
-      const result = ipt(
-        `-t nat -A PREROUTING -p ${proto} --dport ${srcPort} -j REDIRECT --to-port ${dstPort} -m comment --comment "${FW_COMMENT}"`
-      );
-
-      if (result.ok) {
+      try {
+        iptAdd(proto, srcPort, dstPort);
         applied++;
-      } else {
-        errors.push(`[${proto.toUpperCase()}] :${srcPort}→:${dstPort} — ${result.error}`);
+      } catch (e) {
+        errors.push(`[${proto.toUpperCase()}] :${srcPort}→:${dstPort} — ${e.message}`);
       }
     }
   }
 
   // 4. Persistir reglas para que sobrevivan a reinicios (requiere iptables-persistent)
   try {
-    execSync('sudo netfilter-persistent save 2>/dev/null || sudo iptables-save > /etc/iptables/rules.v4 2>/dev/null || true', { timeout: 5000 });
+    iptSave();
   } catch(e) { /* no crítico si no está instalado */ }
 
   if (errors.length > 0) {
@@ -336,7 +362,7 @@ app.get('/api/firewall', (req, res) => {
   const fw = loadFirewall();
   // Leer reglas reales activas en iptables para mostrar estado real
   try {
-    const out = execSync('sudo iptables -t nat -L PREROUTING -n --line-numbers', { timeout: 3000 }).toString();
+    const out = iptList();
     const piHomeLines = out.split('\n').filter(l => l.includes(FW_COMMENT));
     fw.iptablesActive   = piHomeLines.length > 0;
     fw.iptablesRuleCount = piHomeLines.length;
@@ -438,7 +464,6 @@ function saveSysServices(data) {
 
 function getServiceStatus(serviceName) {
   try {
-    const { spawnSync } = require('child_process');
     const activeResult = spawnSync('systemctl', ['is-active', serviceName], { timeout: 3000, encoding: 'utf8' });
     const status = (activeResult.stdout || '').trim() || 'inactive';
     const enabledResult = spawnSync('systemctl', ['is-enabled', serviceName], { timeout: 3000, encoding: 'utf8' });
@@ -498,8 +523,7 @@ app.post('/api/sysservices/:id/action', async (req, res) => {
   // Sanitizar nombre (ya guardado sin caracteres peligrosos, doble check)
   const safeName = svc.name.replace(/[^a-zA-Z0-9._@-]/g, '');
   try {
-    const { spawnSync } = require('child_process');
-    const result = spawnSync('sudo', ['systemctl', action, safeName], { timeout: 10000, encoding: 'utf8' });
+    const result = spawnSync('sudo', [SYSTEMCTL_WRAPPER, action, safeName], { timeout: 10000, encoding: 'utf8' });
     if (result.status !== 0) {
       const errMsg = (result.stderr || result.error?.message || 'Error desconocido').trim();
       return res.status(500).json({ ok: false, error: errMsg });

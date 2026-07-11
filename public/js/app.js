@@ -3,6 +3,34 @@ const ICONS = ['🌐','📁','🖥️','🔒','📊','🎬','🎵','📧','🔧'
 let selectedIcon = '🌐';
 
 // ══════════════════════════════════════════════
+// UTILIDADES DE ESCAPADO (protección XSS)
+// ══════════════════════════════════════════════
+// Cualquier dato que venga de un servicio/regla (nombre, descripción, puerto,
+// comentario...) puede haber sido introducido vía la API sin pasar por el
+// formulario del dashboard. Antes de interpolarlo en innerHTML, SIEMPRE se
+// debe pasar por escapeHtml() para evitar HTML/JS inyectado (ej. un nombre de
+// servicio como "<img src=x onerror=alert(1)>").
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Solo permite URLs http/https (o relativas). Bloquea esquemas peligrosos
+// como javascript:, data:, vbscript:, etc. que podrían ejecutarse al hacer
+// click en la tarjeta de un servicio.
+function safeUrl(url) {
+  const u = String(url ?? '').trim();
+  if (!u || u === '#') return '#';
+  try {
+    // Permite rutas relativas (sin esquema) resolviéndolas contra el origen actual
+    const parsed = new URL(u, window.location.origin);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return u;
+    return '#';
+  } catch {
+    return '#';
+  }
+}
+
+// ══════════════════════════════════════════════
 // AUTENTICACIÓN (API KEY)
 // ══════════════════════════════════════════════
 // Los endpoints POST/PUT/DELETE bajo /api/* requieren la cabecera X-API-Key
@@ -176,23 +204,23 @@ function renderServices(services) {
   services.forEach(s => {
     const card = document.createElement('a');
     card.className = 'service-card';
-    card.href = s.url || '#';
+    card.href = safeUrl(s.url);
     card.target = '_blank';
     card.rel = 'noopener noreferrer';
     card.innerHTML = `
       <button class="card-delete" title="Eliminar" onclick="deleteService(event, ${s.id})">✕</button>
       <div class="card-top">
-        <div class="card-icon">${s.icon}</div>
+        <div class="card-icon">${escapeHtml(s.icon)}</div>
         <div class="card-status ${s.online ? 'status-online' : 'status-offline'}">
           <span class="status-dot"></span>${s.online ? 'online' : 'offline'}
         </div>
       </div>
       <div>
-        <div class="card-name">${s.name}</div>
-        <div class="card-desc">${s.desc}</div>
+        <div class="card-name">${escapeHtml(s.name)}</div>
+        <div class="card-desc">${escapeHtml(s.desc)}</div>
       </div>
       <div class="card-meta">
-        <span class="card-port">localhost<span>${s.port}</span></span>
+        <span class="card-port">localhost<span>${escapeHtml(s.port)}</span></span>
         <span class="card-arrow">↗</span>
       </div>`;
     grid.appendChild(card);
@@ -670,7 +698,7 @@ function renderRulesTable() {
       <td><span class="fw-port">:${r.srcPort}</span></td>
       <td class="fw-arrow-td">→</td>
       <td><span class="fw-port">:${r.dstPort}</span></td>
-      <td><span class="fw-comment">${r.comment || '—'}</span></td>
+      <td><span class="fw-comment">${r.comment ? escapeHtml(r.comment) : '—'}</span></td>
       <td>
         <div class="fw-row-actions">
           <button class="fw-btn-edit" onclick="openFwModal(${r.id})">editar</button>
@@ -908,10 +936,6 @@ function renderSysServices(services) {
   });
 }
 
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
 async function sysServiceAction(id, action) {
   const card = document.getElementById(`sys-svc-${id}`);
   if (!card) return;
@@ -1060,4 +1084,3 @@ setInterval(() => {
   loadSysServices();
   loadPihole();
 }, REFRESH_INTERVAL);
-
