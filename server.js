@@ -304,6 +304,13 @@ function expandProtos(rule) {
   return [rule];
 }
 
+// Valida que un puerto sea un entero dentro del rango válido (1-65535).
+// OJO: usar solo "!port" NO detecta negativos (-5 es "truthy" en JS), por
+// eso se valida explícitamente el rango con < 1 en vez de confiar en falsy.
+function isValidPort(n) {
+  return Number.isInteger(n) && n >= 1 && n <= 65535;
+}
+
 // Aplica/limpia reglas iptables reales
 function applyIptables(fwData) {
   // 1. Borrar SOLO las reglas anteriores de pi-home
@@ -329,7 +336,7 @@ function applyIptables(fwData) {
       const srcPort = parseInt(r.srcPort);
       const dstPort = parseInt(r.dstPort);
 
-      if (!proto || !srcPort || !dstPort || srcPort > 65535 || dstPort > 65535) {
+      if (!proto || !isValidPort(srcPort) || !isValidPort(dstPort)) {
         errors.push(`Regla inválida id=${rule.id}: proto=${r.proto} src=${r.srcPort} dst=${r.dstPort}`);
         continue;
       }
@@ -390,7 +397,7 @@ app.post('/api/firewall/rules', (req, res) => {
   const dstPort = parseInt(req.body.dstPort);
   const proto   = ['tcp','udp','both'].includes(req.body.proto) ? req.body.proto : 'tcp';
 
-  if (!srcPort || !dstPort || srcPort > 65535 || dstPort > 65535)
+  if (!isValidPort(srcPort) || !isValidPort(dstPort))
     return res.status(400).json({ error: 'Puertos inválidos (rango 1-65535)' });
 
   const newRule = {
@@ -417,7 +424,7 @@ app.put('/api/firewall/rules/:id', (req, res) => {
   updated.srcPort = parseInt(updated.srcPort);
   updated.dstPort = parseInt(updated.dstPort);
   if (!['tcp','udp','both'].includes(updated.proto)) updated.proto = 'tcp';
-  if (!updated.srcPort || !updated.dstPort || updated.srcPort > 65535 || updated.dstPort > 65535)
+  if (!isValidPort(updated.srcPort) || !isValidPort(updated.dstPort))
     return res.status(400).json({ error: 'Puertos inválidos' });
 
   fw.rules[idx] = updated;
