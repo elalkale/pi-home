@@ -47,3 +47,31 @@ npm start
 ```
 
 La web estará disponible en `http://[IP-DE-LA-PI]:8888`
+
+## Arquitectura del backend
+
+El backend está organizado por dominio en vez de vivir todo en un único
+archivo, para que cada pieza sea auditable por separado:
+
+```
+server.js              → bootstrap: carga .env, arranca el servidor HTTP
+app.js                 → configura Express (estáticos, JSON, auth) y monta los routers
+config/paths.js         → rutas centralizadas a /public y /data
+lib/sudo.js              → wrappers de mínimo privilegio (sudoRun, rutas a los scripts)
+lib/network.js           → utilidad getLocalIP()
+middleware/auth.js       → middleware de autenticación por X-API-Key
+routes/
+  ├── auth.js            → POST /api/auth/verify
+  ├── system.js           → GET /api/system (CPU, memoria, disco, uptime)
+  ├── services.js          → CRUD /api/services (tarjetas del dashboard)
+  ├── firewall.js           → gestión de reglas NAT vía iptables
+  ├── sysservices.js         → control de servicios systemd (start/stop/restart)
+  └── pihole.js               → integración con la API v6 de Pi-hole
+```
+
+Cada router expone únicamente las rutas relativas a su prefijo (por ejemplo,
+`routes/firewall.js` solo conoce `/`, `/toggle`, `/rules`, `/rules/:id` y
+`/apply`; el prefijo `/api/firewall` se añade al montarlo en `app.js`). Añadir
+un nuevo dominio (por ejemplo, monitorización de red) es tan sencillo como
+crear `routes/network.js` y montarlo con `app.use('/api/network', ...)` en
+`app.js`, sin tocar el resto del backend.
