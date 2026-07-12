@@ -123,11 +123,51 @@ git show <commit>:index.js > index.js
 
 ---
 
+## 7. `server.js` monolítico (~600 líneas) separado en routers
+
+**Problema:** todo el backend (sistema, servicios del dashboard, firewall,
+systemd, Pi-hole, auth) vivía en un único `server.js`. Difícil de auditar
+por partes y de mantener a medida que crece: cualquier cambio en firewall
+obligaba a bucear entre rutas de Pi-hole o de systemd sin relación alguna.
+
+**Cambios:**
+- `app.js` (nuevo): configura Express (estáticos, `express.json()`,
+  middleware de auth) y monta cada router bajo su prefijo `/api/*`. No
+  contiene lógica de negocio.
+- `server.js` (reducido a ~12 líneas): solo carga `.env`, importa `app.js`
+  y arranca `app.listen()`. Es el único punto de entrada, así que
+  `package.json` (`main`, `start`, `dev`) no ha necesitado cambios.
+- `config/paths.js` (nuevo): centraliza las rutas a `/public` y `/data`
+  (antes cada bloque calculaba su propio `path.join(__dirname, ...)`).
+- `lib/sudo.js` (nuevo): `sudoRun()` y las constantes `IPTABLES_WRAPPER` /
+  `SYSTEMCTL_WRAPPER`, compartidas por firewall y sysservices.
+- `lib/network.js` (nuevo): `getLocalIP()`.
+- `middleware/auth.js` (nuevo): `requireApiKey` / `isValidApiKey`,
+  extraído tal cual del punto 1 de este changelog.
+- `routes/auth.js`, `routes/system.js`, `routes/services.js`,
+  `routes/firewall.js`, `routes/sysservices.js`, `routes/pihole.js`
+  (nuevos): un router de Express por dominio, montado en `app.js` con su
+  prefijo (`app.use('/api/firewall', firewallRoutes)`, etc.). Cada archivo
+  solo conoce las rutas relativas a su propio prefijo.
+
+**Sin cambios de comportamiento:** todas las rutas, códigos de estado,
+validaciones y mensajes de error son exactamente los mismos; es un
+movimiento de código, no una reescritura. Verificado arrancando el
+servidor y probando manualmente cada endpoint (`/api/system`,
+`/api/services`, `/api/sysservices`, `/api/firewall`, `/api/pihole`,
+`/api/auth/verify`) tanto con como sin `X-API-Key`.
+
+**Para añadir un nuevo dominio en el futuro:** crear `routes/<nombre>.js`
+con su propio `express.Router()` y montarlo en `app.js` con
+`app.use('/api/<nombre>', require('./routes/<nombre>'))`. No hace falta
+tocar nada más.
+
+---
+
 ## Pendiente (no aplicado aún)
 
 Del resto de la revisión inicial, quedan por hacer si se quiere seguir
 endureciendo el proyecto:
-- Separar `server.js` en routers (`routes/firewall.js`, `routes/system.js`...).
 - Cachear `/api/system` para no relanzar `df` en cada petición.
 - Logs persistentes con rotación.
 - Purga del historial de git para el punto 4 (opcional, ver arriba).
