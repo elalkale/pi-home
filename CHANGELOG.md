@@ -102,12 +102,32 @@ descarta `0` y `NaN`, pero **no** números negativos, porque `-5` es
 
 ---
 
+## 6. `index.js` duplicado/código muerto
+
+**Problema:** `index.js` era un servidor Express mínimo (solo estáticos,
+sin ninguna ruta `/api/*`, puerto 8888 hardcodeado) que no aparecía
+referenciado en ningún sitio: `package.json` apunta a `server.js` tanto en
+`main` como en los scripts `start`/`dev`, y no hay systemd unit ni
+Dockerfile que lo invoque. Confundía sobre cuál era el entrypoint real.
+
+**Cambios:**
+- Borrado `index.js`.
+
+**Si en algún momento lo necesitas de vuelta** (por ejemplo para levantar
+un modo "solo estático" de debug sin la API), está recuperable del
+historial de git con:
+```bash
+git log --all --full-history -- index.js
+git show <commit>:index.js > index.js
+```
+
+---
+
 ## Pendiente (no aplicado aún)
 
 Del resto de la revisión inicial, quedan por hacer si se quiere seguir
 endureciendo el proyecto:
 - Separar `server.js` en routers (`routes/firewall.js`, `routes/system.js`...).
 - Cachear `/api/system` para no relanzar `df` en cada petición.
-- Borrar `index.js` si se confirma que es código muerto.
 - Logs persistentes con rotación.
 - Purga del historial de git para el punto 4 (opcional, ver arriba).
